@@ -25,6 +25,7 @@ import type { GregorianHub } from '../../calendar/hub.js';
 import type { BirthdayService } from '../services/birthday-service.js';
 import type { UpcomingService } from '../services/upcoming.js';
 import { inspectDatabase } from '../services/db-inspect.js';
+import { buildAlmanacMonth } from '../services/almanac.js';
 import { buildExport, importBirthdays, parseImportText } from '../services/transfer.js';
 
 export interface HttpContext {
@@ -47,6 +48,8 @@ export interface BirthdayRoutes {
    * always reflects the live engine.
    */
   storage?: () => { path: string; engine: 'sqlite' | 'json' };
+  /** Fallback zone for the almanac when the request omits `tz`. */
+  defaultTimezone?: string;
 }
 
 /** Minimal shape of the host web server service we bind to. */
@@ -77,6 +80,21 @@ export async function dispatchBirthdayRequest(
     }
     if (req.method === 'GET' && path === '/calendars') {
       return { status: 200, body: { items: hub.listCalendars() } };
+    }
+    if (req.method === 'GET' && path === '/almanac') {
+      // One month of 万年历 data: the Gregorian grid plus, per day, the 农历
+      // name, 干支, 节气, festivals and 宜忌. One request per month keeps day
+      // switching instant in the UI.
+      const url = new URL(req.url, 'http://localhost');
+      const tz = url.searchParams.get('tz') || routes.defaultTimezone || 'Asia/Shanghai';
+      const now = new Date();
+      const today = hub.timezone.formatLocalDate(now, tz);
+      const year = Number(url.searchParams.get('year') ?? today.slice(0, 4));
+      const monthNo = Number(url.searchParams.get('month') ?? today.slice(5, 7));
+      return {
+        status: 200,
+        body: buildAlmanacMonth(year, monthNo, tz, hub.timezone, now),
+      };
     }
     if (req.method === 'GET' && path === '/year-info') {
       // Calendar-specific facts that guide data entry, e.g. the Chinese leap
@@ -230,6 +248,7 @@ export function mountBirthdayRoutes(
     bind('/api/birthday/list', 'GET', false),
     bind('/api/birthday/calendars', 'GET', false),
     bind('/api/birthday/year-info', 'GET', false),
+    bind('/api/birthday/almanac', 'GET', false),
     bind('/api/birthday/db-info', 'GET', false),
     bind('/api/birthday/export', 'GET', false),
     bind('/api/birthday/upcoming', 'GET', false),

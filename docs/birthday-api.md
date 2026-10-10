@@ -101,6 +101,58 @@ month is a leap month before they decide whether to tick 闰月.
 without the concept omit the key entirely. A missing `calendar` or `year` is a
 400.
 
+## `GET /api/birthday/almanac?year=2024&month=2&tz=Asia/Shanghai`
+
+One month of 万年历 data: the Gregorian grid plus, for every day, its 农历 name,
+干支, 节气, festivals and 宜忌. One request per month keeps day switching instant
+in the UI. `year`/`month` default to the current month in `tz`.
+
+```json
+{
+  "year": 2024,
+  "month": 2,
+  "timezone": "Asia/Shanghai",
+  "today": "2026-10-10",
+  "firstWeekday": 4,
+  "days": [
+    {
+      "date": "2024-02-04",
+      "day": 4,
+      "weekday": 0,
+      "weekdayName": "日",
+      "isToday": false,
+      "isWeekend": true,
+      "lunarDayName": "廿五",
+      "lunarMonthName": "腊月",
+      "lunarText": "二〇二三年腊月廿五",
+      "lunarYear": 2023,
+      "lunarMonth": 12,
+      "lunarDay": 25,
+      "isLeapMonth": false,
+      "yearGanZhi": "癸卯",
+      "monthGanZhi": "丙寅",
+      "dayGanZhi": "戊戌",
+      "zodiac": "兔",
+      "jieQi": "立春",
+      "festivals": [],
+      "yi": ["取渔", "入殓", "除服"],
+      "ji": ["嫁娶", "上梁", "入宅"]
+    }
+  ],
+  "jieQi": [{ "name": "立春", "date": "2024-02-04", "day": 4 }],
+  "festivals": [],
+  "almanacAvailable": true
+}
+```
+
+`firstWeekday` is the weekday of the 1st (0 = Sunday), which is how many blanks
+the grid needs before day 1. `lunarMonthName` already carries its 闰 prefix
+(`闰四月`, never `闰闰四月`). A year outside 1900–2100 is rejected.
+
+The 农历, 节气, 干支 and 宜忌 data comes from `lunar-javascript`, which is
+optional: without it the grid still renders with Gregorian dates, `yi`/`ji` are
+empty, and `almanacAvailable` is false with a `note` explaining why.
+
 ## `GET /api/birthday/db-info`
 
 Storage self-check: where the database is, what it is, and whether it is

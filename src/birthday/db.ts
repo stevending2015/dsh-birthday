@@ -423,11 +423,19 @@ export function createBirthdayStore(
   onWarn?: (message: string) => void,
 ): BirthdayStore {
   const kind = detectStoreFileKind(dbPath);
-  const sqlite = canUseSqlite();
 
-  /** Try the native engine, reporting why it failed instead of throwing. */
+  /**
+   * Try the native engine, reporting why it failed instead of throwing.
+   *
+   * The driver is probed HERE rather than up front, so a JSON store never loads
+   * it: probing costs startup time, and it constructs a native `Database` object
+   * whose destructor runs `RemoveEnvironmentCleanupHook`. If such an object is
+   * still uncollected when the isolate is disposed, that destructor aborts the
+   * process with `Assertion failed: (env) != nullptr`. Not creating one at all
+   * is the only reliable way to keep that away from a JSON-only host.
+   */
   const trySqlite = (path: string): BirthdayStore | undefined => {
-    if (!sqlite) return undefined;
+    if (!canUseSqlite()) return undefined;
     try {
       const store = new SqliteStore(path);
       store.init();
@@ -460,11 +468,13 @@ export function createBirthdayStore(
   if (kind === 'sqlite') {
     const store = trySqlite(dbPath);
     if (store !== undefined) return store;
-    // Present but unreadable — a truncated or foreign SQLite container. Do not
-    // write into it; a corrupt file must not take the whole plugin down.
+    // Present but unreadable — a truncated or foreign SQLite container, or no
+    // driver. Do not write into it; a corrupt file must not take the plugin down.
     return siblingJson(
       dbPath,
-      sqlite ? '声明为 SQLite 但无法打开（可能已损坏）' : '是 SQLite 数据库，但 better-sqlite3 不可用',
+      canUseSqlite()
+        ? '声明为 SQLite 但无法打开（可能已损坏）'
+        : '是 SQLite 数据库，但 better-sqlite3 不可用',
     );
   }
 

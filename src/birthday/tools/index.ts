@@ -11,6 +11,7 @@ import { registerQueryTool } from './query.js';
 import { registerUpdateTool } from './update.js';
 import { registerDeleteTool } from './delete.js';
 import { registerUpcomingTool } from './upcoming.js';
+import { registerAlmanacTool } from './almanac.js';
 import { registerTransferTools } from './transfer.js';
 
 export function registerBirthdayTools(
@@ -25,13 +26,15 @@ export function registerBirthdayTools(
   registerDeleteTool(ctx, service);
   registerUpcomingTool(ctx, service, upcoming);
 
-  // Storage inspection and transfer need the store's location, which the
-  // service does not own; they are registered when the host supplies it.
+  // Storage inspection, transfer and the almanac need the store's location or
+  // the calendar hub, neither of which the service exposes; they are registered
+  // when the host supplies them.
   if (storage !== undefined) {
     registerTransferTools(ctx, {
       hub: storage.hub,
       service,
       storage: storage.storage,
     });
+    registerAlmanacTool(ctx, storage.hub);
   }
 }

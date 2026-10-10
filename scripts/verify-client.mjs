@@ -167,4 +167,4 @@ if (failures.length > 0) {
 }
 console.log('');
 console.log(`${notes.length} passed, ${failures.length} failed`);
-process.exit(failures.length === 0 ? 0 : 1);
+process.exitCode = failures.length === 0 ? 0 : 1;

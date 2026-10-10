@@ -91,9 +91,11 @@ if (tokensFile !== undefined) {
 } else {
   const db = findDatabase();
   if (db === undefined) {
+    // Stop without process.exit(): that skips orderly shutdown. The guard below
+    // keeps the rest of the script from running.
     console.error('找不到数据库。请用 --db <path> 指定，或用 --tokens <path> 提供指纹清单。');
     process.exitCode = 1;
-    process.exit();
+    throw new Error('no database to derive fingerprints from');
   }
   for (const token of tokensFromDatabase(db)) tokens.add(token);
   source = `数据库 ${db}`;

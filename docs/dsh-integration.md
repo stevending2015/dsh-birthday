@@ -168,6 +168,7 @@ npm run verify
 GET  /api/birthday/list
 GET  /api/birthday/calendars
 GET  /api/birthday/year-info?calendar=lunar&year=2020
+GET  /api/birthday/almanac?year=2024&month=2&tz=Asia/Shanghai
 GET  /api/birthday/db-info
 GET  /api/birthday/export
 GET  /api/birthday/upcoming?tz=Asia/Shanghai&hour=9

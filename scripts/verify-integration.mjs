@@ -13,7 +13,7 @@
  */
 
 import http from 'node:http';
-import { rmSync, mkdirSync } from 'node:fs';
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,14 +48,28 @@ const workDir = resolve(root, '.verify');
 rmSync(workDir, { recursive: true, force: true });
 mkdirSync(workDir, { recursive: true });
 
+/**
+ * Seed the store as JSON so this harness exercises the JSON engine.
+ *
+ * Deliberate: the engine is chosen from the file's bytes, and a JSON file never
+ * loads better-sqlite3. That keeps a native `Database` out of this process
+ * entirely — its destructor calls RemoveEnvironmentCleanupHook, which aborts the
+ * process with `Assertion failed: (env) != nullptr` if the object is still
+ * uncollected when the isolate is disposed. The SQLite engine is covered by the
+ * unit tests, which close their stores deterministically.
+ */
+writeFileSync(resolve(workDir, 'birthdays.db'), JSON.stringify({ rows: [], nextId: 1 }), 'utf-8');
+
 const registeredTools = [];
 const provided = {};
 const injected = [];
 const loggerErrors = [];
 
+/** Teardown handlers the plugin registered, exercised at the end of the run. */
+const disposeHandlers = [];
+
 const ctx = {
-  tools: {
-    register(definition) {
+  tools: {    register(definition) {
       registeredTools.push(definition);
       return () => {};
     },
@@ -70,7 +84,12 @@ const ctx = {
   inject(keys, cb) {
     injected.push({ keys, cb });
   },
-  on() {},
+  on(event, handler) {
+    // Recorded so teardown can be exercised for real. Leaving the store open
+    // lets a native finalizer run during process exit, which aborts Node with
+    // `Assertion failed: (env) != nullptr` — intermittently, depending on GC.
+    if (event === 'dispose') disposeHandlers.push(handler);
+  },
   effect() {},
   loader: { has: () => false },
   logger: {
@@ -95,7 +114,7 @@ plugin.apply(ctx, {
 const toolNames = registeredTools.map((t) => t.name).sort();
 check(
   'registers the documented tools',
-  toolNames.length === 8,
+  toolNames.length === 9,
   `got ${JSON.stringify(toolNames)}`,
 );
 check(
@@ -104,6 +123,7 @@ check(
     JSON.stringify(
       [
         'birthday_add',
+        'birthday_almanac',
         'birthday_db_info',
         'birthday_delete',
         'birthday_export',
@@ -148,11 +168,12 @@ mountBirthdayRoutes(webServer, {
   // The store lives inside the plugin; surface its location the same way the
   // plugin does, so the storage self-check has a real path to inspect.
   storage: () => ({ path: provided.birthday.store.path, engine: provided.birthday.store.engine }),
+  defaultTimezone: 'Asia/Shanghai',
 });
 
 check(
   'mounts every documented exact route',
-  [...routeTable.keys()].filter((k) => k.startsWith('exact:')).length === 10,
+  [...routeTable.keys()].filter((k) => k.startsWith('exact:')).length === 11,
   `got ${JSON.stringify([...routeTable.keys()])}`,
 );
 
@@ -614,6 +635,38 @@ for (const record of ((await call('GET', '/api/birthday/list')).json.items ?? []
   await call('POST', '/api/birthday/delete', { id: record.id });
 }
 
+// --- 万年历 (almanac) --------------------------------------------------------
+
+const feb = await call('GET', '/api/birthday/almanac?year=2024&month=2&tz=Asia/Shanghai');
+check('GET /almanac returns a full month grid', feb.json.days?.length === 29, `got ${feb.json.days?.length}`);
+check('GET /almanac reports the weekday of the 1st', feb.json.firstWeekday === 4, `got ${feb.json.firstWeekday}`);
+// A month that does not contain today must mark none.
+check('GET /almanac marks no today in an unrelated month', feb.json.days?.filter((d) => d.isToday).length === 0, JSON.stringify(feb.json.today));
+const lichun = feb.json.days?.find((d) => d.day === 4);
+check('GET /almanac puts 立春 on 2024-02-04', lichun?.jieQi === '立春', JSON.stringify(lichun?.jieQi));
+check('GET /almanac converts to 农历', lichun?.lunarText === '二〇二三年腊月廿五', JSON.stringify(lichun?.lunarText));
+check('GET /almanac carries 干支 and 生肖', lichun?.yearGanZhi === '癸卯' && lichun?.zodiac === '兔', JSON.stringify([lichun?.yearGanZhi, lichun?.zodiac]));
+check('GET /almanac lists the month’s solar terms', JSON.stringify(feb.json.jieQi?.map((j) => j.name)) === JSON.stringify(['立春', '雨水']), JSON.stringify(feb.json.jieQi));
+check('GET /almanac carries 宜 and 忌', (lichun?.yi?.length ?? 0) > 0 && (lichun?.ji?.length ?? 0) > 0, JSON.stringify([lichun?.yi?.slice(0, 2), lichun?.ji?.slice(0, 2)]));
+const springFestival = feb.json.days?.find((d) => d.day === 10);
+check('GET /almanac reports 春节', springFestival?.festivals?.includes('春节') === true, JSON.stringify(springFestival?.festivals));
+const leapMonthDay = (await call('GET', '/api/birthday/almanac?year=2020&month=6&tz=Asia/Shanghai')).json.days?.find((d) => d.day === 6);
+check('GET /almanac names a leap month exactly once', leapMonthDay?.lunarMonthName === '闰四月' && leapMonthDay?.isLeapMonth === true, JSON.stringify(leapMonthDay?.lunarMonthName));
+const badAlmanac = await call('GET', '/api/birthday/almanac?year=1800&month=1');
+check('GET /almanac rejects an out-of-range year', typeof badAlmanac.json.error === 'string', JSON.stringify(badAlmanac.json));
+const defaultedAlmanac = await call('GET', '/api/birthday/almanac');
+check('GET /almanac defaults to the current month', Number.isInteger(defaultedAlmanac.json.year) && (defaultedAlmanac.json.days?.length ?? 0) > 0, JSON.stringify([defaultedAlmanac.json.year, defaultedAlmanac.json.month]));
+check('GET /almanac marks exactly one today in the current month', defaultedAlmanac.json.days?.filter((d) => d.isToday).length === 1, JSON.stringify(defaultedAlmanac.json.today));
+check('GET /almanac names the current month’s today', defaultedAlmanac.json.days?.find((d) => d.isToday)?.date === defaultedAlmanac.json.today, JSON.stringify(defaultedAlmanac.json.today));
+
+// The same data through the agent tool.
+const almanacTool = registeredTools.find((t) => t.name === 'birthday_almanac');
+const almanacOneDay = await almanacTool.execute({ year: 2024, month: 2, day: 4 }, {});
+check('birthday_almanac reports 立春 for 2024-02-04', almanacOneDay.summary.includes('立春') && almanacOneDay.summary.includes('腊月廿五'), almanacOneDay.summary);
+check('birthday_almanac narrows to one day when asked', almanacOneDay.summary.split('\n').length === 1, String(almanacOneDay.summary.split('\n').length));
+const almanacWholeMonth = await almanacTool.execute({ year: 2024, month: 2 }, {});
+check('birthday_almanac returns the whole month without a day', almanacWholeMonth.summary.split('\n').length === 29, String(almanacWholeMonth.summary.split('\n').length));
+
 const notFound = await call('GET', '/api/birthday/nope');
 check('unknown route returns 404', notFound.status === 404, `status ${notFound.status}`);
 
@@ -648,6 +701,22 @@ check('no logger errors after tool execution', loggerErrors.length === 0, logger
 
 await new Promise((ok) => server.close(ok));
 
+// --- Teardown ---------------------------------------------------------------
+//
+// Release the store BEFORE reporting. better-sqlite3's Database destructor calls
+// RemoveEnvironmentCleanupHook, which asserts once the V8 environment is gone.
+// An unreleased handle can therefore be collected during isolate disposal and
+// abort the process with `Assertion failed: (env) != nullptr` — intermittently,
+// and independently of whether the tests passed.
+for (const dispose of disposeHandlers) {
+  try {
+    await dispose();
+  } catch (e) {
+    failures.push(`  FAIL  dispose() threw — ${e.message}`);
+  }
+}
+check('plugin teardown runs and closes the store', disposeHandlers.length > 0, `handlers: ${disposeHandlers.length}`);
+
 // --- Report -----------------------------------------------------------------
 
 console.log('dsh-birthday integration verification');
@@ -658,6 +727,11 @@ if (failures.length > 0) {
   console.log('');
   for (const failure of failures) console.log(failure);
 }
+
 console.log('');
 console.log(`${notes.length} passed, ${failures.length} failed`);
-process.exit(failures.length === 0 ? 0 : 1);
+
+// `process.exit()` would skip the orderly shutdown that runs remaining
+// finalizers while the environment is still alive. Setting the code and letting
+// the loop drain keeps that shutdown intact.
+process.exitCode = failures.length === 0 ? 0 : 1;

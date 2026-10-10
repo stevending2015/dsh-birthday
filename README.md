@@ -10,6 +10,9 @@ All data stays on your machine; the plugin makes no network calls.
 ## Features
 
 - **Four calendars**, with a pluggable adapter API for more (Tibetan, Mayan, …).
+- **万年历 (perpetual calendar)** window: a Gregorian month grid carrying each
+  day's 农历 date, 节气 and festivals, plus a detail panel for the selected day
+  with 干支, 生肖, 宜 and 忌. Jump by month, year, or any date.
 - **Gregorian hub**: every record is anchored to a concrete Gregorian date, so
   reminders and sorting work uniformly across calendars.
 - **Leap-month aware**: the Chinese form offers the 闰月 tick only when the
@@ -99,14 +102,15 @@ left alone; delete `<DSH_HOME>/dsh-birthday/` to remove the records too.
 - **Sidebar panel** 「生日」 (slot `sidebar.panellist` + `main`) with a
   4-column card grid. Cards show the age, the calendar date, 时辰, 星座 and 生肖,
   tinted light blue for male and pink for female. Each card has 查看 / 编辑 /
-  删除 buttons.
-- **8 agent tools**:
+  删除 buttons. A **📅 万年历** button next to 刷新 opens the perpetual-calendar
+  window.
+- **9 agent tools**:
   `birthday_add`, `birthday_query`, `birthday_update`, `birthday_delete`,
-  `birthday_upcoming`, `birthday_db_info`, `birthday_export`,
-  `birthday_import`.
+  `birthday_upcoming`, `birthday_almanac`, `birthday_db_info`,
+  `birthday_export`, `birthday_import`.
 - **HTTP API** under `/api/birthday/*`: `list`, `calendars`, `year-info`,
-  `db-info`, `export`, `upcoming`, `add`, `update`, `delete`, `import`.
-  See [docs/birthday-api.md](docs/birthday-api.md).
+  `almanac`, `db-info`, `export`, `upcoming`, `add`, `update`, `delete`,
+  `import`. See [docs/birthday-api.md](docs/birthday-api.md).
 
 ## Configuration
 
