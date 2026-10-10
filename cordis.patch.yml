@@ -1,0 +1,21 @@
+# dsh bundle patch: inserts the dsh-birthday entry into a profile's layer stack.
+# A profile applies this file because the profile manifest lists "dsh-birthday"
+# in `dsh.profile.bundles`. Config travels with the entry so the plugin works
+# with no profile-side overrides; a profile may still override it by id.
+- insert:
+    - id: dsh-birthday
+      name: 'dsh-birthday'
+      config:
+        timezoneEngine: system
+        enabledCalendars:
+          - gregorian
+          - lunar
+          - islamic
+          - hebrew
+        allowThirdPartyAdapters: true
+        dbPath: ''
+        defaultTimezone: Asia/Shanghai
+        reminderDaysBefore:
+          - 3
+          - 1
+        leapMonthStrategy: normal

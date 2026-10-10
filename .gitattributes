@@ -1,0 +1,15 @@
+# Normalize line endings in the repository, whatever the platform.
+#
+# Without this, a Windows checkout rewrites every file with CRLF on the next
+# `git add`, producing diffs that contain no real change.
+* text=auto eol=lf
+
+# Windows batch/PowerShell helpers, should any be added, need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be normalised.
+*.png binary
+*.jpg binary
+*.ico binary
+*.tgz binary

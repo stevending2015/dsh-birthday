@@ -1,0 +1,18 @@
+# Default config bundled with dsh-birthday.
+# DSH merges this into the profile's cordis tree at load time.
+- id: dsh-birthday
+  name: 'dsh-birthday'
+  config:
+    timezoneEngine: system
+    enabledCalendars:
+      - gregorian
+      - lunar
+      - islamic
+      - hebrew
+    allowThirdPartyAdapters: true
+    dbPath: ''
+    defaultTimezone: Asia/Shanghai
+    reminderDaysBefore:
+      - 3
+      - 1
+    leapMonthStrategy: normal

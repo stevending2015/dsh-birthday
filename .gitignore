@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+#
+# Both are generated: `lib/` by tsc, `client/client.js` by esbuild (run
+# `npm run build:all`). They are ignored so the repository stays source-only,
+# which is why `prepare` builds them for a git install.
+lib/
+client/
+
+# Packed artifacts
+*.tgz
+
+# Test and harness scratch space
+.verify/
+coverage/
+
+# Local data and diagnostics
+data/
+.acl-report/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
