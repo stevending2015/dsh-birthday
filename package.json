@@ -1,6 +1,6 @@
 {
   "name": "dsh-birthday",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH plugin: multi-calendar birthday library plus a 万年历 (perpetual calendar) — Gregorian / Lunar / Islamic / Hebrew with pluggable adapters",
   "type": "module",
   "main": "lib/index.js",
@@ -67,6 +67,7 @@
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.4",
+    "better-sqlite3": "^11.0.0",
     "react": "^18.3.0"
   },
   "peerDependenciesMeta": {
@@ -79,6 +80,9 @@
     "@deepseek-ai/schemastery": {
       "optional": true
     },
+    "better-sqlite3": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
@@ -86,9 +90,6 @@
   "dependencies": {
     "lunar": "^2.0.0",
     "lunar-javascript": "^1.7.7"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

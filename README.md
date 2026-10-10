@@ -32,61 +32,41 @@ All data stays on your machine; the plugin makes no network calls.
 
 Requires DSH `0.2.0-rc.2` or a compatible release.
 
-### From the registry (once published)
+### Install
 
 ```bash
 dsh plugin --profile web add dsh-birthday
 ```
 
-### From a local tarball
+That is the whole install: DSH forwards its arguments to pnpm in the profile
+directory and then **registers the bundle itself**, appending `dsh-birthday` to
+`dsh.profile.bundles`. Verified end to end in a empty `DSH_HOME`: the command
+exits 0, the package lands in `profiles/web/node_modules/`, and
+`dsh --dump-config --profile web` composes the entry with the configuration from
+`cordis.patch.yml`.
 
-```bash
-npm pack                                     # produces dsh-birthday-0.1.0.tgz
-dsh plugin --profile web add ./dsh-birthday-0.1.0.tgz
-```
-
-### From a git repository
-
-```bash
-dsh plugin --profile web add github:stevending2015/dsh-birthday
-```
-
-The build output is not committed, so this path builds the package on install
-(`prepare`). It therefore needs a working Node/TypeScript toolchain — prefer the
-registry or tarball route if you just want to use the plugin.
-
-### Then register the bundle — required
-
-> `dsh plugin` forwards its arguments **verbatim to pnpm** in the profile
-> directory. It installs the package but does **not** touch the profile's bundle
-> list, so the plugin will not load until you add it.
-
-Edit `<DSH_HOME>/profiles/web/package.json` and append the package name to the
-end of `dsh.profile.bundles`:
-
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app",
-        "dsh-birthday"
-      ]
-    }
-  }
-}
-```
-
-Order matters: bundles are applied as patch layers in list order, so a plugin
-that layers on the base belongs **after** it. Then restart DSH:
+Then start (or restart) DSH and hard-refresh the browser:
 
 ```bash
 dsh web
 ```
 
-Installing through the in-app plugin manager (Settings → Plugins) does both
-steps for you, because it reconciles the bundle list itself.
+Installing through the in-app plugin manager (Settings → Plugins) is equivalent.
+
+### Other install sources
+
+```bash
+# a local tarball
+npm pack
+dsh plugin --profile web add ./dsh-birthday-0.2.1.tgz
+
+# a git checkout
+dsh plugin --profile web add github:stevending2015/dsh-birthday
+```
+
+The build output is not committed, so the git route builds on install
+(`prepare`) and needs a working Node/TypeScript toolchain. Prefer the registry
+if you only want to use the plugin.
 
 ### Uninstall
 
@@ -94,8 +74,8 @@ steps for you, because it reconciles the bundle list itself.
 dsh plugin --profile web remove dsh-birthday
 ```
 
-Then drop `"dsh-birthday"` from `dsh.profile.bundles`. Your database file is
-left alone; delete `<DSH_HOME>/dsh-birthday/` to remove the records too.
+Your records live outside the package and are left alone; delete
+`<DSH_HOME>/dsh-birthday/` to remove them too.
 
 ## What it adds to DSH
 
@@ -154,11 +134,21 @@ happen to load: a JSON store stays JSON even if the native SQLite driver becomes
 available later. That matters because handing a JSON file to SQLite would start
 an empty database over your records.
 
-- **SQLite** via `better-sqlite3` when it is genuinely usable (optional
-  dependency; needs a successful native build).
-- **JSON** otherwise. Writes are atomic (temp file → `fsync` → rename), so an
-  interrupted write cannot truncate the store, and an unparseable file is moved
-  aside as `<name>.corrupt-<timestamp>` rather than silently reset.
+- **SQLite** via `better-sqlite3` when it is genuinely usable. That driver is an
+  **optional peer**, not a dependency, so it is never installed for you: its
+  native build script is blocked by pnpm's default policy, and installing it
+  anyway would make `dsh plugin … add` exit non-zero on a fresh machine. Add it
+  yourself if you want the SQLite engine:
+
+  ```bash
+  dsh plugin --profile web add better-sqlite3
+  pnpm approve-builds      # in the profile directory, to allow the native build
+  ```
+
+- **JSON** otherwise, which is the default. Writes are atomic (temp file →
+  `fsync` → rename), so an interrupted write cannot truncate the store, and an
+  unparseable file is moved aside as `<name>.corrupt-<timestamp>` rather than
+  silently reset.
 
 Check the live state at any time with the `birthday_db_info` tool or
 `GET /api/birthday/db-info`; it reports the path, engine, byte-level format and
