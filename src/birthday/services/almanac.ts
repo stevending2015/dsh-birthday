@@ -102,23 +102,41 @@ export function buildBirthdayIndex(
   const index = new Map<string, AlmanacBirthday[]>();
 
   for (const record of records) {
-    let localDate: string;
-    let degraded = false;
-    let degradationReason: string | undefined;
-    try {
-      const annual = hub.resolveAnnual(
-        record.calendarSystem,
-        record.fields,
-        year,
-        record.birthTimezone,
-      );
-      localDate = annual.localDate;
-      degraded = annual.degraded;
-      degradationReason = annual.degradationReason;
-    } catch {
-      // A record the calendar cannot resolve must not blank the whole month.
-      continue;
+    /**
+     * Resolve the occurrence that falls inside the VIEWED Gregorian year.
+     *
+     * The target year is not the Gregorian year for every calendar. A lunar
+     * date late in the year lands in the NEXT Gregorian year: 农历 N 年腊月
+     * happens in January or February of N+1. Resolving only `year` therefore
+     * produced the N+1 date, which never matched the grid — a 腊月 birthday was
+     * simply invisible. Trying the neighbours and keeping the occurrence that
+     * really lands in `year` fixes that; since a birthday recurs once a year, at
+     * most one candidate matches.
+     */
+    let chosen: { localDate: string; degraded: boolean; degradationReason?: string } | undefined;
+    for (const target of [year - 1, year, year + 1]) {
+      try {
+        const annual = hub.resolveAnnual(
+          record.calendarSystem,
+          record.fields,
+          target,
+          record.birthTimezone,
+        );
+        if (Number(annual.localDate.slice(0, 4)) === year) {
+          chosen = annual;
+          break;
+        }
+      } catch {
+        // An out-of-range target, or a calendar that cannot resolve this
+        // record: either way, move on to the next candidate.
+      }
     }
+    // A record with no occurrence in this year contributes nothing.
+    if (chosen === undefined) continue;
+
+    const localDate = chosen.localDate;
+    const degraded = chosen.degraded;
+    const degradationReason = chosen.degradationReason;
 
     const birthYear = Number((record.gregorianLocalDate ?? '').slice(0, 4));
     const occurrenceYear = Number(localDate.slice(0, 4));
