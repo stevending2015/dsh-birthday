@@ -2,21 +2,28 @@
  * `birthday_almanac` — the 万年历 the UI window shows, exposed to the agent.
  *
  * Answers the questions a calendar window answers: what is the 农历 date, which
- * day is a given 节气 or festival, what is 宜/忌 on a date.
+ * day is a given 节气 or festival, what is 宜/忌 on a date, and whose birthday
+ * falls on it.
  */
 
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { GregorianHub } from '../../calendar/hub.js';
+import type { BirthdayService } from '../services/birthday-service.js';
 import {
   ALMANAC_MAX_YEAR,
   ALMANAC_MIN_YEAR,
   buildAlmanacMonth,
+  buildBirthdayIndex,
   hasAlmanacLibrary,
 } from '../services/almanac.js';
 import { jsonRender, presentCall } from './shared.js';
 
-export function registerAlmanacTool(ctx: Context, hub: GregorianHub): void {
+export function registerAlmanacTool(
+  ctx: Context,
+  hub: GregorianHub,
+  service: BirthdayService,
+): void {
   ctx.tools.register(defineTool({
     name: 'birthday_almanac',
     description:
@@ -54,12 +61,14 @@ export function registerAlmanacTool(ctx: Context, hub: GregorianHub): void {
       const year = Number.isFinite(Number(args?.year)) ? Number(args.year) : Number(today.slice(0, 4));
       const monthNo = Number.isFinite(Number(args?.month)) ? Number(args.month) : Number(today.slice(5, 7));
 
-      const built = buildAlmanacMonth(year, monthNo, tz, hub.timezone, now);
+      // The plugin's own records are resolved onto the grid the same way the
+      // cards do, so a birthday shows up on the day it will actually be marked.
+      const index = buildBirthdayIndex(service.list(), year, hub);
+      const built = buildAlmanacMonth(year, monthNo, tz, hub.timezone, now, index);
       const scope =
         args?.day !== undefined
           ? built.days.filter((d) => d.day === Number(args.day))
           : built.days;
-
       const lines = scope.map((d) =>
         [
           d.date,
@@ -72,6 +81,15 @@ export function registerAlmanacTool(ctx: Context, hub: GregorianHub): void {
           d.festivals.length > 0 ? `节日 ${d.festivals.join('/')}` : '',
           d.yi.length > 0 ? `宜 ${d.yi.join(' ')}` : '',
           d.ji.length > 0 ? `忌 ${d.ji.join(' ')}` : '',
+          d.birthdays.length > 0
+            ? `生日 ${d.birthdays
+                .map(
+                  (b) =>
+                    `${b.name}${b.relation !== undefined && b.relation !== '' ? `(${b.relation})` : ''}` +
+                    `${b.turningAge !== undefined ? ` 满${b.turningAge}岁` : ''}`,
+                )
+                .join('、')}`
+            : '',
           d.isToday ? '（今天）' : '',
         ]
           .filter((part) => part !== '')

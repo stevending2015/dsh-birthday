@@ -14,7 +14,10 @@
  */
 
 import { createRequire } from 'node:module';
+import type { CalendarFields } from '../../calendar/types.js';
+import type { GregorianHub } from '../../calendar/hub.js';
 import type { TimezoneService } from '../../calendar/timezone.js';
+import type { BirthdayRecord } from '../models/birthday.js';
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -64,6 +67,86 @@ export function hasAlmanacLibrary(): boolean {
 export const ALMANAC_MIN_YEAR = 1900;
 export const ALMANAC_MAX_YEAR = 2100;
 
+/** A birthday landing on one day of the grid. */
+export interface AlmanacBirthday {
+  id?: number;
+  name: string;
+  relation?: string;
+  gender?: string;
+  calendarSystem: string;
+  /** The date as entered, so the client can render it in its own wording. */
+  fields: CalendarFields;
+  /** Age they turn on this occurrence. */
+  turningAge?: number;
+  /** True when this year's occurrence is a stand-in (e.g. missing leap month). */
+  degraded: boolean;
+  degradationReason?: string;
+}
+
+/**
+ * Map every record onto the day it falls on in a given Gregorian year.
+ *
+ * Resolution goes through the hub's `resolveAnnual`, the same path the cards and
+ * reminders use — so the almanac agrees with them, including for leap-month
+ * birthdays in a year without that month, which degrade rather than vanish.
+ * @param records - stored birthdays.
+ * @param year - the Gregorian year being viewed.
+ * @param hub - calendar hub.
+ * @returns Date (`YYYY-MM-DD`) to the birthdays on it.
+ */
+export function buildBirthdayIndex(
+  records: BirthdayRecord[],
+  year: number,
+  hub: GregorianHub,
+): Map<string, AlmanacBirthday[]> {
+  const index = new Map<string, AlmanacBirthday[]>();
+
+  for (const record of records) {
+    let localDate: string;
+    let degraded = false;
+    let degradationReason: string | undefined;
+    try {
+      const annual = hub.resolveAnnual(
+        record.calendarSystem,
+        record.fields,
+        year,
+        record.birthTimezone,
+      );
+      localDate = annual.localDate;
+      degraded = annual.degraded;
+      degradationReason = annual.degradationReason;
+    } catch {
+      // A record the calendar cannot resolve must not blank the whole month.
+      continue;
+    }
+
+    const birthYear = Number((record.gregorianLocalDate ?? '').slice(0, 4));
+    const occurrenceYear = Number(localDate.slice(0, 4));
+    const turningAge =
+      Number.isFinite(birthYear) && Number.isFinite(occurrenceYear)
+        ? occurrenceYear - birthYear
+        : undefined;
+
+    const marker: AlmanacBirthday = {
+      id: record.id,
+      name: record.name,
+      ...(record.relation !== undefined ? { relation: record.relation } : {}),
+      ...(record.gender !== undefined ? { gender: record.gender } : {}),
+      calendarSystem: record.calendarSystem,
+      fields: record.fields,
+      ...(turningAge !== undefined && turningAge >= 0 ? { turningAge } : {}),
+      degraded,
+      ...(degradationReason !== undefined ? { degradationReason } : {}),
+    };
+
+    const existing = index.get(localDate);
+    if (existing === undefined) index.set(localDate, [marker]);
+    else existing.push(marker);
+  }
+
+  return index;
+}
+
 /** One day in the month grid. */
 export interface AlmanacDay {
   /** `YYYY-MM-DD`. */
@@ -98,6 +181,8 @@ export interface AlmanacDay {
   yi: string[];
   /** Almanac warnings. */
   ji: string[];
+  /** Birthdays falling on this day. */
+  birthdays: AlmanacBirthday[];
 }
 
 /** A whole month, ready to render as a grid. */
@@ -114,6 +199,8 @@ export interface AlmanacMonth {
   jieQi: Array<{ name: string; date: string; day: number }>;
   /** Festivals in this month, in date order. */
   festivals: Array<{ name: string; date: string; day: number }>;
+  /** Every birthday in this month, in date order. */
+  birthdays: Array<{ date: string; day: number; name: string; turningAge?: number }>;
   /** True when 农历/节气/宜忌 are included. */
   almanacAvailable: boolean;
   note?: string;
@@ -148,6 +235,7 @@ const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
  * @param tz - IANA zone used to decide which day is "today".
  * @param timezone - the timezone service, for the local date.
  * @param now - reference instant, injectable for tests.
+ * @param birthdayIndex - date to birthdays, from `buildBirthdayIndex`.
  * @returns The month, with the leading blank count needed for the grid.
  */
 export function buildAlmanacMonth(
@@ -156,6 +244,7 @@ export function buildAlmanacMonth(
   tz: string,
   timezone: TimezoneService,
   now: Date = new Date(),
+  birthdayIndex?: Map<string, AlmanacBirthday[]>,
 ): AlmanacMonth {
   assertRange(year, month);
 
@@ -164,6 +253,7 @@ export function buildAlmanacMonth(
   const days: AlmanacDay[] = [];
   const jieQi: AlmanacMonth['jieQi'] = [];
   const festivals: AlmanacMonth['festivals'] = [];
+  const birthdays: AlmanacMonth['birthdays'] = [];
 
   for (let day = 1; day <= total; day += 1) {
     const date = ymd(year, month, day);
@@ -190,6 +280,7 @@ export function buildAlmanacMonth(
       festivals: [],
       yi: [],
       ji: [],
+      birthdays: [],
     };
 
     if (almanacMod !== null) {
@@ -223,6 +314,21 @@ export function buildAlmanacMonth(
       }
     }
 
+    // Birthdays attach regardless of whether the lunar library loaded: they
+    // come from the plugin's own records, not from the almanac extras.
+    const onThisDay = birthdayIndex?.get(date);
+    if (onThisDay !== undefined && onThisDay.length > 0) {
+      base.birthdays = onThisDay;
+      for (const person of onThisDay) {
+        birthdays.push({
+          date,
+          day,
+          name: person.name,
+          ...(person.turningAge !== undefined ? { turningAge: person.turningAge } : {}),
+        });
+      }
+    }
+
     days.push(base);
   }
 
@@ -236,6 +342,7 @@ export function buildAlmanacMonth(
     days,
     jieQi,
     festivals,
+    birthdays,
     almanacAvailable: almanacMod !== null,
     ...(almanacMod === null
       ? { note: '未安装 lunar-javascript：仅显示公历，农历/节气/宜忌不可用。' }

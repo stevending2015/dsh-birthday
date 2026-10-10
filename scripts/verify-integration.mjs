@@ -667,6 +667,64 @@ check('birthday_almanac narrows to one day when asked', almanacOneDay.summary.sp
 const almanacWholeMonth = await almanacTool.execute({ year: 2024, month: 2 }, {});
 check('birthday_almanac returns the whole month without a day', almanacWholeMonth.summary.split('\n').length === 29, String(almanacWholeMonth.summary.split('\n').length));
 
+// --- birthdays on the grid --------------------------------------------------
+//
+// The grid must carry the plugin's own records, not just almanac trivia. A
+// calendar window that shows 节气 but not the user's birthdays is exactly the
+// complaint this covers.
+
+const marked = await call('POST', '/api/birthday/add', {
+  name: '万年历标记',
+  gender: 'female',
+  relation: '朋友',
+  calendarSystem: 'gregorian',
+  fields: { year: 1990, month: 3, day: 12 },
+  birthTimezone: 'Asia/Shanghai',
+});
+check('POST /add accepts the record the grid must mark', marked.status === 200 && !marked.json.error, JSON.stringify(marked.json));
+const markedRecord = (await call('GET', '/api/birthday/list')).json.items?.find((r) => r.name === '万年历标记');
+
+const march = await call('GET', '/api/birthday/almanac?year=2024&month=3&tz=Asia/Shanghai');
+const day12 = march.json.days?.find((d) => d.day === 12);
+check('GET /almanac marks the birthday on its day', day12?.birthdays?.length === 1, JSON.stringify(day12?.birthdays));
+check('GET /almanac names the person', day12?.birthdays?.[0]?.name === '万年历标记', JSON.stringify(day12?.birthdays?.[0]?.name));
+check('GET /almanac carries the relation', day12?.birthdays?.[0]?.relation === '朋友', JSON.stringify(day12?.birthdays?.[0]?.relation));
+check('GET /almanac computes the age they turn', day12?.birthdays?.[0]?.turningAge === 34, JSON.stringify(day12?.birthdays?.[0]?.turningAge));
+check('GET /almanac carries the entered fields for the client', day12?.birthdays?.[0]?.fields?.month === 3, JSON.stringify(day12?.birthdays?.[0]?.fields));
+check(
+  'GET /almanac marks only that one day',
+  march.json.days?.filter((d) => (d.birthdays?.length ?? 0) > 0).length === 1,
+  JSON.stringify(march.json.days?.filter((d) => (d.birthdays?.length ?? 0) > 0).map((d) => d.date)),
+);
+check('GET /almanac lists the month’s birthdays', march.json.birthdays?.length === 1 && march.json.birthdays[0].day === 12, JSON.stringify(march.json.birthdays));
+
+const lunarAdd = await call('POST', '/api/birthday/add', {
+  name: '农历标记',
+  calendarSystem: 'lunar',
+  fields: { year: 1990, month: 8, day: 15 },
+  birthTimezone: 'Asia/Shanghai',
+});
+check('POST /add accepts a lunar record', lunarAdd.status === 200 && !lunarAdd.json.error, JSON.stringify(lunarAdd.json));
+const sept = await call('GET', '/api/birthday/almanac?year=2024&month=9&tz=Asia/Shanghai');
+const lunarDay = sept.json.days?.find((d) => d.birthdays?.some((b) => b.name === '农历标记'));
+check('GET /almanac resolves a lunar birthday to its day', lunarDay?.date === '2024-09-17', JSON.stringify(lunarDay?.date));
+check(
+  'GET /almanac puts it on 农历八月十五',
+  lunarDay?.lunarMonthName === '八月' && lunarDay?.lunarDayName === '十五',
+  JSON.stringify([lunarDay?.lunarMonthName, lunarDay?.lunarDayName]),
+);
+
+const markedTool = await almanacTool.execute({ year: 2024, month: 3, day: 12 }, {});
+check('birthday_almanac reports the birthday', markedTool.summary.includes('万年历标记'), markedTool.summary);
+
+await call('POST', '/api/birthday/delete', { id: markedRecord?.id });
+const almanacAfterDelete = await call('GET', '/api/birthday/almanac?year=2024&month=3&tz=Asia/Shanghai');
+check(
+  'deleting the record clears the marker',
+  almanacAfterDelete.json.days?.filter((d) => (d.birthdays?.length ?? 0) > 0).length === 0,
+  JSON.stringify(almanacAfterDelete.json.birthdays),
+);
+
 const notFound = await call('GET', '/api/birthday/nope');
 check('unknown route returns 404', notFound.status === 404, `status ${notFound.status}`);
 

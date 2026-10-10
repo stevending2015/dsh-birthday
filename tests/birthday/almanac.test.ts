@@ -7,21 +7,42 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createCalendarEngine } from '../../src/calendar/index.js';
 import { createTimezoneService } from '../../src/calendar/timezone.js';
 import {
   ALMANAC_MAX_YEAR,
   ALMANAC_MIN_YEAR,
   buildAlmanacMonth,
+  buildBirthdayIndex,
   daysInMonth,
   hasAlmanacLibrary,
 } from '../../src/birthday/services/almanac.js';
+import type { BirthdayRecord } from '../../src/birthday/models/birthday.js';
 
 const tz = createTimezoneService();
+const engine = createCalendarEngine({
+  enabledCalendars: ['gregorian', 'lunar', 'islamic', 'hebrew'],
+});
+const hub = engine.hub;
+
 const month = (year: number, m: number, now = new Date('2024-02-04T12:00:00Z')) =>
   buildAlmanacMonth(year, m, 'Asia/Shanghai', tz, now);
 
 const dayOf = (year: number, m: number, d: number, now?: Date) =>
   month(year, m, now).days.find((x) => x.day === d)!;
+
+let nextId = 1;
+function record(over: Partial<BirthdayRecord> = {}): BirthdayRecord {
+  return {
+    id: nextId++,
+    name: '张三',
+    calendarSystem: 'gregorian',
+    fields: { year: 1990, month: 3, day: 12 },
+    birthTimezone: 'Asia/Shanghai',
+    gregorianLocalDate: '1990-03-12',
+    ...over,
+  } as BirthdayRecord;
+}
 
 describe('daysInMonth', () => {
   it('knows leap Februaries', () => {
@@ -173,6 +194,98 @@ describe('almanac advice', () => {
     expect(d.yi).toContain('嫁娶');
     expect(Array.isArray(d.ji)).toBe(true);
     expect(d.ji.length).toBeGreaterThan(0);
+  });
+});
+
+describe('birthdays on the grid', () => {
+  it('places a Gregorian birthday on its day', () => {
+    const index = buildBirthdayIndex([record()], 2024, hub);
+    const march = buildAlmanacMonth(2024, 3, 'Asia/Shanghai', tz, new Date('2024-03-01T00:00:00Z'), index);
+    const day = march.days.find((d) => d.day === 12)!;
+    expect(day.birthdays.map((b) => b.name)).toEqual(['张三']);
+    expect(day.birthdays[0].turningAge).toBe(34);
+    // And nowhere else.
+    expect(march.days.filter((d) => d.birthdays.length > 0)).toHaveLength(1);
+  });
+
+  it('resolves a lunar birthday to this year’s Gregorian day', () => {
+    // 农历八月十五 in 2024 falls on 2024-09-17.
+    const index = buildBirthdayIndex(
+      [record({ calendarSystem: 'lunar', fields: { year: 1990, month: 8, day: 15 } })],
+      2024,
+      hub,
+    );
+    expect([...index.keys()]).toEqual(['2024-09-17']);
+  });
+
+  it('agrees with the upcoming service for the same record', () => {
+    // The grid must not disagree with the cards about when a birthday is.
+    const rec = record({ calendarSystem: 'lunar', fields: { year: 1990, month: 8, day: 15 } });
+    const index = buildBirthdayIndex([rec], 2024, hub);
+    const annual = hub.resolveAnnual(rec.calendarSystem, rec.fields, 2024, rec.birthTimezone);
+    expect([...index.keys()]).toEqual([annual.localDate]);
+  });
+
+  it('keeps a leap-month birthday visible in a year without that month', () => {
+    // 闰四月 exists in 2020 but not 2021; the record must degrade, not vanish.
+    const rec = record({
+      calendarSystem: 'lunar',
+      fields: { year: 1990, month: 4, day: 15, isLeapMonth: true },
+      gregorianLocalDate: '1990-06-07',
+    });
+    const index = buildBirthdayIndex([rec], 2021, hub);
+    expect(index.size).toBe(1);
+    const marker = [...index.values()][0][0];
+    expect(marker.name).toBe('张三');
+    expect(marker.degraded).toBe(true);
+  });
+
+  it('lists every birthday in the month in date order', () => {
+    const people = [
+      record({ name: '三月生', fields: { year: 1990, month: 3, day: 20 } }),
+      record({ name: '三月初', fields: { year: 1988, month: 3, day: 5 } }),
+    ];
+    const index = buildBirthdayIndex(people, 2024, hub);
+    const march = buildAlmanacMonth(2024, 3, 'Asia/Shanghai', tz, new Date('2024-03-01T00:00:00Z'), index);
+    expect(march.birthdays.map((b) => b.name)).toEqual(['三月初', '三月生']);
+    expect(march.birthdays.map((b) => b.day)).toEqual([5, 20]);
+  });
+
+  it('is empty when there are no records', () => {
+    const index = buildBirthdayIndex([], 2024, hub);
+    const march = buildAlmanacMonth(2024, 3, 'Asia/Shanghai', tz, new Date('2024-03-01T00:00:00Z'), index);
+    expect(march.birthdays).toEqual([]);
+    expect(march.days.every((d) => d.birthdays.length === 0)).toBe(true);
+  });
+
+  it('leaves months without a birthday untouched', () => {
+    const index = buildBirthdayIndex([record()], 2024, hub);
+    const april = buildAlmanacMonth(2024, 4, 'Asia/Shanghai', tz, new Date('2024-04-01T00:00:00Z'), index);
+    expect(april.birthdays).toEqual([]);
+  });
+
+  it('survives a record the calendar cannot resolve', () => {
+    const broken = record({ calendarSystem: 'mayan' as never });
+    const good = record({ name: '好的' });
+    const index = buildBirthdayIndex([broken, good], 2024, hub);
+    expect([...index.values()].flat().map((b) => b.name)).toEqual(['好的']);
+  });
+
+  it('carries the entered date so the client can render it', () => {
+    const index = buildBirthdayIndex(
+      [record({ calendarSystem: 'lunar', fields: { year: 1990, month: 8, day: 15, shichen: '辰' } })],
+      2024,
+      hub,
+    );
+    const marker = [...index.values()][0][0];
+    expect(marker.calendarSystem).toBe('lunar');
+    expect(marker.fields).toMatchObject({ month: 8, day: 15, shichen: '辰' });
+  });
+
+  it('works without an index at all', () => {
+    const march = month(2024, 3);
+    expect(march.birthdays).toEqual([]);
+    expect(march.days.every((d) => d.birthdays.length === 0)).toBe(true);
   });
 });
 

@@ -25,7 +25,7 @@ import type { GregorianHub } from '../../calendar/hub.js';
 import type { BirthdayService } from '../services/birthday-service.js';
 import type { UpcomingService } from '../services/upcoming.js';
 import { inspectDatabase } from '../services/db-inspect.js';
-import { buildAlmanacMonth } from '../services/almanac.js';
+import { buildAlmanacMonth, buildBirthdayIndex } from '../services/almanac.js';
 import { buildExport, importBirthdays, parseImportText } from '../services/transfer.js';
 
 export interface HttpContext {
@@ -91,9 +91,12 @@ export async function dispatchBirthdayRequest(
       const today = hub.timezone.formatLocalDate(now, tz);
       const year = Number(url.searchParams.get('year') ?? today.slice(0, 4));
       const monthNo = Number(url.searchParams.get('month') ?? today.slice(5, 7));
+      // The plugin's own records are resolved through the same annual path the
+      // cards and reminders use, so the markers never disagree with them.
+      const index = buildBirthdayIndex(service.list(), year, hub);
       return {
         status: 200,
-        body: buildAlmanacMonth(year, monthNo, tz, hub.timezone, now),
+        body: buildAlmanacMonth(year, monthNo, tz, hub.timezone, now, index),
       };
     }
     if (req.method === 'GET' && path === '/year-info') {

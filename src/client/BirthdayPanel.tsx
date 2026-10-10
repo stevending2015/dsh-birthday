@@ -500,6 +500,7 @@ export function BirthdayPanel(): React.ReactElement {
         open={almanacOpen}
         today={formatInZone(new Date().toISOString(), tz)}
         loadMonth={loadAlmanacMonth}
+        calendarName={calendarName}
         onClose={() => setAlmanacOpen(false)}
       />
 

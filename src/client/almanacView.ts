@@ -1,7 +1,21 @@
 /**
- * Almanac view model: the types the window renders, and the two pure decisions
- * it makes. Kept out of the .tsx so both can be tested without JSX.
+ * Almanac view model: the types the window renders, and the pure decisions it
+ * makes. Kept out of the .tsx so both can be tested without JSX.
  */
+
+/** A birthday landing on one day of the grid. */
+export interface AlmanacBirthday {
+  id?: number;
+  name: string;
+  relation?: string;
+  gender?: string;
+  calendarSystem: string;
+  fields: Record<string, unknown>;
+  /** Age they turn on this occurrence. */
+  turningAge?: number;
+  degraded: boolean;
+  degradationReason?: string;
+}
 
 /** One day, as returned by `GET /api/birthday/almanac`. */
 export interface AlmanacDay {
@@ -26,6 +40,8 @@ export interface AlmanacDay {
   festivals: string[];
   yi: string[];
   ji: string[];
+  /** Birthdays falling on this day. */
+  birthdays: AlmanacBirthday[];
 }
 
 /** A whole month, ready to render as a grid. */
@@ -68,18 +84,51 @@ export function shiftMonth(year: number, month: number, delta: number): { year: 
 /**
  * The small label under a day number.
  *
- * A solar term outranks a festival, which outranks the lunar day — the
- * convention every Chinese 万年历 uses, because the rarer item is the one worth
- * reading at a glance.
+ * A birthday outranks everything: it is the plugin's own data and the reason the
+ * window exists, so on a day that has one the cell says so instead of showing a
+ * lunar day the user can read from any calendar.
  * @param day - the day to label.
  * @returns The text and which kind it is, for styling.
  */
 export function cellLabel(day: AlmanacDay): {
   text: string;
-  kind: 'jieqi' | 'festival' | 'lunar' | 'none';
+  kind: 'birthday' | 'jieqi' | 'festival' | 'lunar' | 'none';
 } {
+  if (day.birthdays.length > 0) {
+    // One name fits; more than one becomes a count so the cell stays readable.
+    const first = day.birthdays[0];
+    return {
+      text: day.birthdays.length === 1 ? first.name : `${first.name} +${day.birthdays.length - 1}`,
+      kind: 'birthday',
+    };
+  }
   if (day.jieQi !== '') return { text: day.jieQi, kind: 'jieqi' };
   if (day.festivals.length > 0) return { text: day.festivals[0], kind: 'festival' };
   if (day.lunarDayName !== '') return { text: day.lunarDayName, kind: 'lunar' };
   return { text: '', kind: 'none' };
+}
+
+/**
+ * Render a birthday's date as entered, for the detail panel.
+ *
+ * Mirrors the wording the cards use, so the same record reads identically in
+ * both places.
+ * @param birthday - the marker from the grid.
+ * @param calendarName - resolved display name of its calendar.
+ * @returns e.g. `公历 3月12日`, `中国农历 八月十五`, `中国农历 闰四月十五`.
+ */
+export function birthdayDateText(birthday: AlmanacBirthday, calendarName: string): string {
+  const fields = birthday.fields ?? {};
+  const month = Number(fields.month);
+  const day = Number(fields.day);
+  const parts: string[] = [calendarName];
+  if (Number.isFinite(month) && Number.isFinite(day)) {
+    parts.push(`${fields.isLeapMonth === true ? '闰' : ''}${month}月${day}日`);
+  } else {
+    parts.push('日期未知');
+  }
+  if (typeof fields.shichen === 'string' && fields.shichen !== '') {
+    parts.push(`${fields.shichen}时`);
+  }
+  return parts.join(' ');
 }

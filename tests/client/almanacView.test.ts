@@ -12,10 +12,26 @@ import {
   ALMANAC_MAX_YEAR,
   ALMANAC_MIN_YEAR,
   WEEKDAY_HEADERS,
+  birthdayDateText,
   cellLabel,
   shiftMonth,
+  type AlmanacBirthday,
   type AlmanacDay,
 } from '../../src/client/almanacView.js';
+
+function birthday(over: Partial<AlmanacBirthday> = {}): AlmanacBirthday {
+  return {
+    id: 1,
+    name: '张三',
+    relation: '朋友',
+    gender: 'male',
+    calendarSystem: 'gregorian',
+    fields: { year: 1990, month: 3, day: 12 },
+    turningAge: 36,
+    degraded: false,
+    ...over,
+  };
+}
 
 function day(over: Partial<AlmanacDay> = {}): AlmanacDay {
   return {
@@ -40,6 +56,7 @@ function day(over: Partial<AlmanacDay> = {}): AlmanacDay {
     festivals: [],
     yi: [],
     ji: [],
+    birthdays: [],
     ...over,
   };
 }
@@ -90,6 +107,22 @@ describe('shiftMonth', () => {
 });
 
 describe('cellLabel', () => {
+  it('prefers a birthday above everything else', () => {
+    // The plugin's own data is the reason the window exists, so it wins over
+    // the almanac trivia a user can read in any calendar.
+    expect(
+      cellLabel(day({ birthdays: [birthday({ name: '李四' })], jieQi: '立春', festivals: ['春节'] })),
+    ).toEqual({ text: '李四', kind: 'birthday' });
+  });
+
+  it('shows a count when several birthdays share a day', () => {
+    expect(
+      cellLabel(
+        day({ birthdays: [birthday({ name: '张三' }), birthday({ id: 2, name: '李四' })] }),
+      ),
+    ).toEqual({ text: '张三 +1', kind: 'birthday' });
+  });
+
   it('prefers a solar term', () => {
     expect(cellLabel(day({ jieQi: '立春', festivals: ['春节'] }))).toEqual({
       text: '立春',
@@ -107,6 +140,28 @@ describe('cellLabel', () => {
 
   it('returns nothing when there is nothing to show', () => {
     expect(cellLabel(day({ lunarDayName: '' }))).toEqual({ text: '', kind: 'none' });
+  });
+});
+
+describe('birthdayDateText', () => {
+  it('renders a Gregorian birthday as entered', () => {
+    expect(birthdayDateText(birthday(), '公历')).toBe('公历 3月12日');
+  });
+
+  it('marks a leap month', () => {
+    expect(
+      birthdayDateText(birthday({ calendarSystem: 'lunar', fields: { month: 4, day: 15, isLeapMonth: true } }), '中国农历'),
+    ).toBe('中国农历 闰4月15日');
+  });
+
+  it('appends 时辰 when the record has one', () => {
+    expect(
+      birthdayDateText(birthday({ calendarSystem: 'lunar', fields: { month: 8, day: 15, shichen: '辰' } }), '中国农历'),
+    ).toBe('中国农历 8月15日 辰时');
+  });
+
+  it('says so when the date fields are unusable', () => {
+    expect(birthdayDateText(birthday({ fields: {} }), '公历')).toBe('公历 日期未知');
   });
 });
 

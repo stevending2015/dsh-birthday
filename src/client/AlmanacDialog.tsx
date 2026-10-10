@@ -5,6 +5,9 @@
  * each cell carrying its 农历 day (or the 节气 / festival when the day has one),
  * and a detail panel for the selected day with 干支, 生肖, 节气, 节日 and 宜忌.
  *
+ * Days that carry a birthday say so in the cell — that is this plugin's own
+ * data, and the reason the window is here rather than a generic calendar.
+ *
  * The component is HTTP-free: the panel supplies `loadMonth`, so this stays
  * testable and the fetch logic stays in one place.
  */
@@ -14,18 +17,21 @@ import {
   ALMANAC_MAX_YEAR,
   ALMANAC_MIN_YEAR,
   WEEKDAY_HEADERS,
+  birthdayDateText,
   cellLabel,
   shiftMonth,
   type AlmanacMonth,
 } from './almanacView.js';
 
-export type { AlmanacDay, AlmanacMonth } from './almanacView.js';
+export type { AlmanacBirthday, AlmanacDay, AlmanacMonth } from './almanacView.js';
 
 export interface AlmanacDialogProps {
   open: boolean;
   /** Today in the user's zone, used for the initial view and the 今天 button. */
   today: string;
   loadMonth: (year: number, month: number) => Promise<AlmanacMonth | undefined>;
+  /** Resolve a calendar id to its display name, for the birthday lines. */
+  calendarName?: (id: string) => string;
   onClose: () => void;
 }
 
@@ -192,11 +198,13 @@ export function AlmanacDialog(props: AlmanacDialogProps): React.ReactElement | n
                 day.isWeekend ? 'dsh-almanac__cell--end' : '',
                 day.isToday ? 'dsh-almanac__cell--today' : '',
                 day.date === selected ? 'dsh-almanac__cell--selected' : '',
+                day.birthdays.length > 0 ? 'dsh-almanac__cell--birthday' : '',
                 label.kind === 'jieqi' ? 'dsh-almanac__cell--jieqi' : '',
                 label.kind === 'festival' ? 'dsh-almanac__cell--festival' : '',
               ]
                 .filter((c) => c !== '')
                 .join(' ');
+              const people = day.birthdays.map((b) => b.name).join('、');
               return (
                 <button
                   key={day.date}
@@ -204,8 +212,16 @@ export function AlmanacDialog(props: AlmanacDialogProps): React.ReactElement | n
                   role="gridcell"
                   className={classes}
                   onClick={() => setSelected(day.date)}
-                  title={`${day.date} 农历${day.lunarMonthName}${day.lunarDayName}${day.festivals.length > 0 ? ` ${day.festivals.join('/')}` : ''}`}
+                  title={[
+                    `${day.date} 农历${day.lunarMonthName}${day.lunarDayName}`,
+                    day.jieQi !== '' ? `节气 ${day.jieQi}` : '',
+                    day.festivals.length > 0 ? day.festivals.join('/') : '',
+                    day.birthdays.length > 0 ? `🎂 ${people}` : '',
+                  ]
+                    .filter((part) => part !== '')
+                    .join(' · ')}
                 >
+                  {day.birthdays.length > 0 && <span className="dsh-almanac__cake" aria-hidden="true">🎂</span>}
                   <span className="dsh-almanac__num">{day.day}</span>
                   {label.text !== '' && (
                     <span className={`dsh-almanac__label dsh-almanac__label--${label.kind}`}>{label.text}</span>
@@ -225,6 +241,30 @@ export function AlmanacDialog(props: AlmanacDialogProps): React.ReactElement | n
                   <span>星期{selectedDay.weekdayName}</span>
                   {selectedDay.isToday && <span className="dsh-almanac__badge">今天</span>}
                 </div>
+                {selectedDay.birthdays.length > 0 && (
+                  <div className="dsh-almanac__birthdays">
+                    <div className="dsh-almanac__birthdays-title">
+                      🎂 生日（{selectedDay.birthdays.length}）
+                    </div>
+                    <ul>
+                      {selectedDay.birthdays.map((person, index) => (
+                        <li key={`${person.id ?? person.name}-${index}`}>
+                          <strong>{person.name}</strong>
+                          {person.relation !== undefined && person.relation !== '' && (
+                            <span className="dsh-almanac__relation">{person.relation}</span>
+                          )}
+                          {person.turningAge !== undefined && (
+                            <span className="dsh-almanac__age">满 {person.turningAge} 岁</span>
+                          )}
+                          <span className="dsh-almanac__bdate">
+                            {birthdayDateText(person, props.calendarName?.(person.calendarSystem) ?? person.calendarSystem)}
+                          </span>
+                          {person.degraded && <span className="dsh-almanac__degraded">按本月推算</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <dl className="dsh-birthday-view dsh-almanac__facts">
                   <dt>农历</dt>
                   <dd>{selectedDay.lunarText !== '' ? selectedDay.lunarText : '—'}</dd>
@@ -248,6 +288,23 @@ export function AlmanacDialog(props: AlmanacDialogProps): React.ReactElement | n
               </>
             )}
           </div>
+
+          {(data?.birthdays?.length ?? 0) > 0 && (
+            <div className="dsh-almanac__month-birthdays">
+              <span className="dsh-almanac__month-title">本月生日 {data?.birthdays.length}</span>
+              {data?.birthdays.map((b, index) => (
+                <button
+                  key={`${b.date}-${index}`}
+                  type="button"
+                  className="dsh-almanac__month-item"
+                  onClick={() => setSelected(b.date)}
+                >
+                  {b.date.slice(5)} {b.name}
+                  {b.turningAge !== undefined ? `（${b.turningAge}岁）` : ''}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -521,6 +521,89 @@ export const stylesheet = `
   color: var(--bd-danger);
 }
 
+/* A birthday outranks the almanac label: it is the plugin's own data, and the
+   reason this window exists rather than a generic calendar. */
+.dsh-almanac__label--birthday {
+  color: var(--bd-accent);
+  font-weight: 600;
+}
+
+.dsh-almanac__cell--birthday {
+  border-color: var(--bd-accent);
+  background: var(--bd-surface-strong);
+}
+
+.dsh-almanac__cake {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.dsh-almanac__birthdays {
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--bd-accent);
+  border-radius: 8px;
+}
+
+.dsh-almanac__birthdays-title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bd-accent);
+}
+
+.dsh-almanac__birthdays ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+.dsh-almanac__birthdays li {
+  margin-bottom: 2px;
+}
+
+.dsh-almanac__relation,
+.dsh-almanac__age,
+.dsh-almanac__bdate,
+.dsh-almanac__degraded {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--bd-muted);
+}
+
+.dsh-almanac__age {
+  color: var(--bd-accent);
+}
+
+.dsh-almanac__month-birthdays {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--bd-border);
+  font-size: 12px;
+}
+
+.dsh-almanac__month-title {
+  color: var(--bd-muted);
+}
+
+.dsh-almanac__month-item {
+  padding: 1px 6px;
+  border: 1px solid var(--bd-border);
+  border-radius: 6px;
+  background: var(--bd-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dsh-almanac__month-item:hover {
+  border-color: var(--bd-accent);
+}
+
 .dsh-almanac__cell--today {
   border-color: var(--bd-accent);
 }

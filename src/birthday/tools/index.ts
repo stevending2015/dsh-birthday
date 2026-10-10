@@ -35,6 +35,6 @@ export function registerBirthdayTools(
       service,
       storage: storage.storage,
     });
-    registerAlmanacTool(ctx, storage.hub);
+    registerAlmanacTool(ctx, storage.hub, service);
   }
 }
