@@ -179,14 +179,26 @@ console.log(`机器身份: username="${username ?? '?'}", home="${homedir()}"`);
 const work = mkdtempSync(join(tmpdir(), 'dsh-pii-audit-'));
 let leaks = 0;
 try {
-  execSync(`${NPM} pack --pack-destination "${work}" --silent`, { cwd: root, encoding: 'utf-8' });
-  const tgz = join(work, readdirSync(work).find((f) => f.endsWith('.tgz')));
+  // A published tarball can be audited directly, which is the only way to be
+  // sure the artifact consumers actually receive is clean.
+  const external = flag('tarball');
+  let tgz;
+  let label;
+  if (external !== undefined) {
+    tgz = resolve(external);
+    if (!existsSync(tgz)) throw new Error(`tarball not found: ${tgz}`);
+    label = `① 已发布的 tarball（${tgz}）`;
+  } else {
+    execSync(`${NPM} pack --pack-destination "${work}" --silent`, { cwd: root, encoding: 'utf-8' });
+    tgz = join(work, readdirSync(work).find((f) => f.endsWith('.tgz')));
+    label = '① 分发包 tarball（会被分享给他人的东西）';
+  }
   const pkgDir = join(work, 'package');
   mkdirSync(pkgDir, { recursive: true });
   execSync(`tar -xzf "${tgz}" -C "${work}"`, { stdio: 'ignore' });
   const pkgFiles = listFiles(pkgDir);
 
-  leaks += audit('① 分发包 tarball（会被分享给他人的东西）', pkgDir, pkgFiles);
+  leaks += audit(label, pkgDir, pkgFiles);
 
   console.log('\n  数据文件检查:');
   const dataFiles = pkgFiles.filter((f) =>
