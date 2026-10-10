@@ -6,19 +6,25 @@ node_modules/
 # Both are generated: `lib/` by tsc, `client/client.js` by esbuild (run
 # `npm run build:all`). They are ignored so the repository stays source-only,
 # which is why `prepare` builds them for a git install.
-lib/
-client/
+#
+# THE LEADING SLASHES MATTER. An unanchored `client/` matches a directory named
+# `client` at ANY depth, which silently ignored `src/client/` and
+# `tests/client/` — the entire browser-side source and its tests never reached
+# the repository, and a git install could not build. Anchoring to the root keeps
+# the patterns on the generated directories only.
+/lib/
+/client/
 
 # Packed artifacts
-*.tgz
+/*.tgz
 
 # Test and harness scratch space
-.verify/
-coverage/
+/.verify/
+/coverage/
 
 # Local data and diagnostics
-data/
-.acl-report/
+/data/
+/.acl-report/
 
 # Editor and OS noise
 .DS_Store

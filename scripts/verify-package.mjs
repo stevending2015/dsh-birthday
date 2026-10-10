@@ -230,6 +230,44 @@ try {
     JSON.stringify(clientExports?.inject),
   );
 
+  console.log('8. repository completeness');
+  // A git install builds from the repository, so anything the build needs must
+  // be committed. An unanchored `.gitignore` pattern is exactly how this breaks
+  // silently: `client/` matched `src/client/` too, so every browser-side source
+  // file and its tests were ignored and never pushed, while the npm tarball
+  // looked perfect because it packs by allowlist.
+  let isRepo = true;
+  try {
+    execSync('git rev-parse --is-inside-work-tree', { cwd: root, stdio: 'ignore' });
+  } catch {
+    isRepo = false;
+  }
+  if (!isRepo) {
+    console.log('  SKIP  not a git repository');
+  } else {
+    const tracked = new Set(
+      execSync('git ls-files', { cwd: root, encoding: 'utf-8' })
+        .split('\n')
+        .map((line) => line.trim().split('\\').join('/'))
+        .filter(Boolean),
+    );
+    const wanted = [];
+    for (const dir of ['src', 'tests']) {
+      const full = join(root, dir);
+      if (existsSync(full)) wanted.push(...listFiles(full).map((f) => `${dir}/${f}`));
+    }
+    const missing = wanted.filter((f) => !tracked.has(f));
+    check(
+      'every source and test file is committed',
+      missing.length === 0,
+      `missing: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` …+${missing.length - 5}` : ''}`,
+    );
+    // The build entry points specifically: without these a git install cannot build.
+    for (const entry of ['src/client/index.ts', 'src/index.ts', 'scripts/bundle-client.mjs']) {
+      check(`${entry} is committed`, tracked.has(entry));
+    }
+  }
+
   console.log(`\n` + `${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 } finally {
